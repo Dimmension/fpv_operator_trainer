@@ -1,0 +1,17 @@
+[project]
+name = "fpv-operator-trainer"
+version = "0.1.0"
+description = "Diagnostics and attention trainer for FPV operators"
+readme = "README.md"
+authors = [
+    { name = "Vadim Nikiforov", email = "vvynikiforov@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+fpv-operator-trainer = "fpv_operator_trainer:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"

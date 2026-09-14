@@ -1,0 +1,38 @@
+[project]
+name = "fpv-operator-trainer-backend"
+version = "0.1.0"
+description = "FastAPI backend for FPV Operator Trainer"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic",
+  "asyncpg",
+  "fastapi",
+  "pydantic-settings",
+  "psycopg[binary]",
+  "sqlalchemy[asyncio]",
+  "uvicorn[standard]",
+]
+
+[dependency-groups]
+dev = [
+  "aiosqlite==0.21.0",
+  "httpx",
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.uv]
+package = false
