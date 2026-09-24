@@ -11,16 +11,20 @@ from app.attempts import (
     list_attempts,
     list_modules,
     record_attention_action,
+    record_correction_action,
     record_memory_answer,
+    record_recall,
 )
 from app.database import get_session
 from app.schemas import (
     AttemptHistoryItem,
     AttemptState,
     AttentionActionRequest,
+    CorrectionActionRequest,
     HealthResponse,
     MemoryAnswerRequest,
     ModuleSummary,
+    RecallRequest,
     StartAttemptRequest,
 )
 
@@ -80,3 +84,19 @@ async def memory_answer(
     session: SessionDep,
 ) -> AttemptState:
     return await record_memory_answer(session, attempt_id, round_number, request)
+
+
+@router.post(
+    "/attempts/{attempt_id}/correction/actions", response_model=AttemptState, tags=["attempts"]
+)
+async def correction_action(
+    attempt_id: int,
+    request: CorrectionActionRequest,
+    session: SessionDep,
+) -> AttemptState:
+    return await record_correction_action(session, attempt_id, request)
+
+
+@router.post("/attempts/{attempt_id}/recall", response_model=AttemptState, tags=["attempts"])
+async def recall(attempt_id: int, request: RecallRequest, session: SessionDep) -> AttemptState:
+    return await record_recall(session, attempt_id, request)

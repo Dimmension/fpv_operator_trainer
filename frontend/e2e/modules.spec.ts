@@ -95,3 +95,35 @@ test("operator restores all figures in one round", async ({ page }) => {
   await expect(page.getByText("Диагностика завершена")).toBeVisible();
   await expect(page.getByText("5 / 5").first()).toBeVisible();
 });
+
+test("operator marks a target in attention endurance", async ({ page }) => {
+  await page.goto("/modules/endurance");
+  const startResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/attempts") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Начать тест" }).click();
+  const state = await (await startResponse).json() as {
+    task: { cells: string[]; target_symbol: string };
+  };
+  await expect(page.getByRole("gridcell")).toHaveCount(300);
+  const firstTarget = state.task.cells.indexOf(state.task.target_symbol);
+  await page.getByRole("gridcell").nth(firstTarget).click();
+  await expect(page.getByText(`${firstTarget + 1} / 300`)).toBeVisible();
+  await page.getByRole("button", { name: "Завершить и выйти" }).click();
+  await expect(page).toHaveURL("/");
+});
+
+test("divided attention shows correction grid and a timed message", async ({ page }) => {
+  await page.goto("/modules/divided");
+  const startResponse = page.waitForResponse(
+    (response) => response.url().endsWith("/api/v1/attempts") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Начать тест" }).click();
+  const state = await (await startResponse).json() as {
+    task: { visible_statement: string };
+  };
+  await expect(page.getByRole("gridcell")).toHaveCount(600);
+  await expect(page.getByText(state.task.visible_statement)).toBeVisible();
+  await page.getByRole("button", { name: "Завершить и выйти" }).click();
+  await expect(page).toHaveURL("/");
+});

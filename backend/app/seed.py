@@ -59,6 +59,55 @@ MODULES = (
             },
         },
     },
+    {
+        "code": "attention-endurance",
+        "title": "Оценка уровня стойкости внимания",
+        "description": "Отмечайте целевой символ в корректурной таблице в течение пяти минут.",
+        "exercise_type": "correction",
+        "level": {
+            "level_number": 1,
+            "title": "Базовый режим",
+            "instructions": (
+                "Просматривайте таблицу слева направо и отмечайте все буквы А. "
+                "Каждые 30 секунд появится отметка «Линия!». Время работы — пять минут."
+            ),
+            "config": {
+                "grid_rows": 15,
+                "grid_columns": 20,
+                "target_symbol": "А",
+                "symbols": ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З"],
+                "target_share": 0.12,
+                "time_limit_ms": 300000,
+                "line_interval_ms": 30000,
+            },
+        },
+    },
+    {
+        "code": "divided-attention",
+        "title": "Оценка уровня распределения внимания",
+        "description": "Работайте с корректурной таблицей и одновременно запоминайте сообщения.",
+        "exercise_type": "dual_correction",
+        "level": {
+            "level_number": 1,
+            "title": "Базовый режим",
+            "instructions": (
+                "Отмечайте буквы А и запоминайте сообщения справа. "
+                "Через две минуты воспроизведите запомнившееся."
+            ),
+            "config": {
+                "grid_rows": 20,
+                "grid_columns": 30,
+                "target_symbol": "А",
+                "symbols": ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З"],
+                "target_share": 0.12,
+                "time_limit_ms": 120000,
+                "line_interval_ms": 30000,
+                "statement_interval_ms": 10000,
+                "statement_visible_ms": 5000,
+                "statement_count": 12,
+            },
+        },
+    },
 )
 
 BANDS = (

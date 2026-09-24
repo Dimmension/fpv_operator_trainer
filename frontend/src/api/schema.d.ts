@@ -124,6 +124,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/attempts/{attempt_id}/correction/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Correction Action */
+        post: operations["correction_action_api_v1_attempts__attempt_id__correction_actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attempts/{attempt_id}/recall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recall */
+        post: operations["recall_api_v1_attempts__attempt_id__recall_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -227,6 +261,15 @@ export interface components {
             /** Reaction Time Ms */
             reaction_time_ms: number;
         };
+        /** CorrectionActionRequest */
+        CorrectionActionRequest: {
+            /** Sequence Number */
+            sequence_number: number;
+            /** Position */
+            position: number;
+            /** Selected */
+            selected: boolean;
+        };
         /**
          * FinishReason
          * @enum {string}
@@ -295,6 +338,11 @@ export interface components {
             /** Active Progress Total */
             active_progress_total?: number | null;
         };
+        /** RecallRequest */
+        RecallRequest: {
+            /** Statements */
+            statements: string[];
+        };
         /** ShapePlacement */
         ShapePlacement: {
             /** Grid Position */
@@ -311,7 +359,7 @@ export interface components {
              * Module Code
              * @enum {string}
              */
-            module_code: "sequential-search" | "visual-memory";
+            module_code: "sequential-search" | "visual-memory" | "attention-endurance" | "divided-attention";
         };
         /** ValidationError */
         ValidationError: {
@@ -538,6 +586,76 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["MemoryAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correction_action_api_v1_attempts__attempt_id__correction_actions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recall_api_v1_attempts__attempt_id__recall_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecallRequest"];
             };
         };
         responses: {

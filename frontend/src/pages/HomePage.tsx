@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Eye, ScanSearch, Timer, Trophy } from "lucide-react";
+import { ArrowRight, Eye, ScanSearch, Timer, Trophy, Focus, PanelsTopLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -19,6 +19,12 @@ const moduleMeta = {
     icon: Eye,
     marker: "02",
   },
+  "attention-endurance": {
+    href: "/modules/endurance", icon: Focus, marker: "03",
+  },
+  "divided-attention": {
+    href: "/modules/divided", icon: PanelsTopLeft, marker: "04",
+  },
 } as const;
 
 function moduleFacts(code: string, config: Record<string, unknown>): [string, string] {
@@ -28,6 +34,10 @@ function moduleFacts(code: string, config: Record<string, unknown>): [string, st
     const minutes = Number(config.time_limit_ms ?? 300_000) / 60_000;
     const time = Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1);
     return [`${maximum - minimum + 1} чисел`, `${time} мин.`];
+  }
+  if (code === "attention-endurance" || code === "divided-attention") {
+    const cells = Number(config.grid_rows ?? 15) * Number(config.grid_columns ?? 20);
+    return [`${cells} знаков`, `${Number(config.time_limit_ms ?? 300000) / 60000} мин.`];
   }
   const rounds = Number(config.round_count ?? 1);
   const rows = Number(config.grid_rows ?? 5);

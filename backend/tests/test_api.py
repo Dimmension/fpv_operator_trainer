@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -42,6 +43,8 @@ async def test_modules_and_full_attention_attempt(client: AsyncClient) -> None:
     assert [item["code"] for item in modules.json()] == [
         "sequential-search",
         "visual-memory",
+        "attention-endurance",
+        "divided-attention",
     ]
 
     started = await client.post("/api/v1/attempts", json={"module_code": "sequential-search"})
@@ -118,9 +121,7 @@ async def test_full_memory_attempt_and_history(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_memory_attempt_rejects_an_incomplete_configured_answer(client: AsyncClient) -> None:
-    state = (
-        await client.post("/api/v1/attempts", json={"module_code": "visual-memory"})
-    ).json()
+    state = (await client.post("/api/v1/attempts", json={"module_code": "visual-memory"})).json()
     placements = state["current_round"]["stimulus"]["placements"][:-1]
 
     response = await client.post(
@@ -147,3 +148,98 @@ async def test_finishing_an_incomplete_attempt_allows_a_fresh_start(client: Asyn
     ).json()
     assert restarted["id"] != started["id"]
     assert restarted["metrics"]["items_found"] == 0
+
+
+@pytest.mark.asyncio
+async def test_correction_tracks_order_errors_and_timeout(client: AsyncClient, monkeypatch) -> None:
+    started = await client.post("/api/v1/attempts", json={"module_code": "attention-endurance"})
+    assert started.status_code == 200
+    state = started.json()
+    assert len(state["task"]["cells"]) == 300
+    target = state["task"]["target_symbol"]
+    position = state["task"]["cells"].index(target)
+    path = f"/api/v1/attempts/{state['id']}/correction/actions"
+    marked = await client.post(
+        path,
+        json={
+            "sequence_number": 1,
+            "position": position,
+            "selected": True,
+        },
+    )
+    assert marked.status_code == 200
+    assert marked.json()["metrics"]["correct_actions"] == 1
+    assert marked.json()["task"]["cursor"] == position
+    repeated = await client.post(
+        path,
+        json={
+            "sequence_number": 1,
+            "position": position,
+            "selected": True,
+        },
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["metrics"]["correct_actions"] == 1
+    backward = await client.post(
+        path,
+        json={
+            "sequence_number": 2,
+            "position": position,
+            "selected": True,
+        },
+    )
+    assert backward.status_code == 422
+
+    started_at = datetime.fromisoformat(state["started_at"])
+    monkeypatch.setattr("app.attempts.utc_now", lambda: started_at + timedelta(seconds=31))
+    with_line = (await client.get(f"/api/v1/attempts/{state['id']}")).json()
+    assert with_line["task"]["line_marks"] == [
+        {"elapsed_ms": 30000, "position": position}
+    ]
+    monkeypatch.setattr(
+        "app.attempts.utc_now", lambda: started_at + timedelta(minutes=5, seconds=1)
+    )
+    final = await client.get(f"/api/v1/attempts/{state['id']}")
+    assert final.status_code == 200
+    assert final.json()["status"] == "completed"
+    assert final.json()["result"]["found"] == 1
+    assert final.json()["result"]["missed"] == final.json()["result"]["targets"] - 1
+    assert len(final.json()["result"]["interval_pace"]) == 10
+
+
+@pytest.mark.asyncio
+async def test_dual_task_presents_twelve_messages_and_scores_recall(
+    client: AsyncClient, monkeypatch
+) -> None:
+    started = await client.post("/api/v1/attempts", json={"module_code": "divided-attention"})
+    assert started.status_code == 200
+    state = started.json()
+    assert len(state["task"]["cells"]) == 600
+    assert state["task"]["visible_statement_number"] == 1
+    first_statement = state["task"]["visible_statement"]
+    started_at = datetime.fromisoformat(state["started_at"])
+
+    too_early = await client.post(
+        f"/api/v1/attempts/{state['id']}/recall",
+        json={"statements": [first_statement]},
+    )
+    assert too_early.status_code == 409
+    monkeypatch.setattr("app.attempts.utc_now", lambda: started_at + timedelta(seconds=6))
+    hidden = (await client.get(f"/api/v1/attempts/{state['id']}")).json()
+    assert "visible_statement" not in hidden["task"]
+
+    monkeypatch.setattr("app.attempts.utc_now", lambda: started_at + timedelta(seconds=121))
+    recall_state = (await client.get(f"/api/v1/attempts/{state['id']}")).json()
+    assert recall_state["status"] == "in_progress"
+    assert recall_state["task"]["stage"] == "recall"
+    assert "visible_statement" not in recall_state["task"]
+    completed = await client.post(
+        f"/api/v1/attempts/{state['id']}/recall",
+        json={"statements": [first_statement, first_statement]},
+    )
+    assert completed.status_code == 200
+    result = completed.json()["result"]
+    assert completed.json()["status"] == "completed"
+    assert result["statement_count"] == 12
+    assert result["recalled"] == 1
+    assert result["memory_score"] == 8.33

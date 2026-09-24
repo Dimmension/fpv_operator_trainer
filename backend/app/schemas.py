@@ -21,7 +21,9 @@ class ModuleSummary(BaseModel):
 
 
 class StartAttemptRequest(BaseModel):
-    module_code: Literal["sequential-search", "visual-memory"]
+    module_code: Literal[
+        "sequential-search", "visual-memory", "attention-endurance", "divided-attention"
+    ]
 
 
 class AttemptMetrics(BaseModel):
@@ -84,6 +86,16 @@ class MemoryAnswerRequest(BaseModel):
         if len(shapes) != len(self.placements):
             raise ValueError("Каждая фигура должна использоваться ровно один раз")
         return self
+
+
+class CorrectionActionRequest(BaseModel):
+    sequence_number: int = Field(ge=1)
+    position: int = Field(ge=0)
+    selected: bool
+
+
+class RecallRequest(BaseModel):
+    statements: list[str] = Field(max_length=24)
 
 
 class AttemptHistoryItem(BaseModel):

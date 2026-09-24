@@ -311,6 +311,110 @@
           }
         }
       }
+    },
+    "/api/v1/attempts/{attempt_id}/correction/actions": {
+      "post": {
+        "tags": [
+          "attempts"
+        ],
+        "summary": "Correction Action",
+        "operationId": "correction_action_api_v1_attempts__attempt_id__correction_actions_post",
+        "parameters": [
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Attempt Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/attempts/{attempt_id}/recall": {
+      "post": {
+        "tags": [
+          "attempts"
+        ],
+        "summary": "Recall",
+        "operationId": "recall_api_v1_attempts__attempt_id__recall_post",
+        "parameters": [
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Attempt Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttemptState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -657,6 +761,31 @@
         ],
         "title": "AttentionActionRequest"
       },
+      "CorrectionActionRequest": {
+        "properties": {
+          "sequence_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence Number"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Position"
+          },
+          "selected": {
+            "type": "boolean",
+            "title": "Selected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sequence_number",
+          "position",
+          "selected"
+        ],
+        "title": "CorrectionActionRequest"
+      },
       "FinishReason": {
         "type": "string",
         "enum": [
@@ -846,6 +975,23 @@
         ],
         "title": "ModuleSummary"
       },
+      "RecallRequest": {
+        "properties": {
+          "statements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 24,
+            "title": "Statements"
+          }
+        },
+        "type": "object",
+        "required": [
+          "statements"
+        ],
+        "title": "RecallRequest"
+      },
       "ShapePlacement": {
         "properties": {
           "grid_position": {
@@ -878,7 +1024,9 @@
             "type": "string",
             "enum": [
               "sequential-search",
-              "visual-memory"
+              "visual-memory",
+              "attention-endurance",
+              "divided-attention"
             ],
             "title": "Module Code"
           }

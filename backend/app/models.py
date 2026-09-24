@@ -61,6 +61,7 @@ class EventType(enum.StrEnum):
     correct_click = "correct_click"
     wrong_click = "wrong_click"
     round_answered = "round_answered"
+    line_mark = "line_mark"
     exercise_completed = "exercise_completed"
     exercise_interrupted = "exercise_interrupted"
 

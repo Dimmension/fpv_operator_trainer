@@ -32,7 +32,7 @@ export const api = {
   modules: () => request<ModuleSummary[]>("/modules"),
   history: () => request<AttemptHistoryItem[]>("/attempts"),
   attempt: (id: number) => request<AttemptState>(`/attempts/${id}`),
-  start: (moduleCode: "sequential-search" | "visual-memory") =>
+  start: (moduleCode: "sequential-search" | "visual-memory" | "attention-endurance" | "divided-attention") =>
     request<AttemptState>("/attempts", {
       method: "POST",
       body: JSON.stringify({ module_code: moduleCode }),
@@ -62,5 +62,13 @@ export const api = {
     request<AttemptState>(`/attempts/${id}/rounds/${round}/answer`, {
       method: "POST",
       body: JSON.stringify({ placements, response_time_ms: responseTimeMs }),
+    }),
+  correctionAction: (id: number, sequence_number: number, position: number, selected: boolean) =>
+    request<AttemptState>(`/attempts/${id}/correction/actions`, {
+      method: "POST", body: JSON.stringify({ sequence_number, position, selected }),
+    }),
+  recall: (id: number, statements: string[]) =>
+    request<AttemptState>(`/attempts/${id}/recall`, {
+      method: "POST", body: JSON.stringify({ statements }),
     }),
 };

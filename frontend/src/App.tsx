@@ -5,6 +5,7 @@ import { AttentionPage } from "./pages/AttentionPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { HomePage } from "./pages/HomePage";
 import { MemoryPage } from "./pages/MemoryPage";
+import { CorrectionPage } from "./pages/CorrectionPage";
 
 export function App() {
   return (
@@ -13,6 +14,8 @@ export function App() {
         <Route index element={<HomePage />} />
         <Route path="modules/attention" element={<AttentionPage />} />
         <Route path="modules/memory" element={<MemoryPage />} />
+        <Route path="modules/endurance" element={<CorrectionPage moduleCode="attention-endurance" />} />
+        <Route path="modules/divided" element={<CorrectionPage moduleCode="divided-attention" />} />
         <Route path="history" element={<HistoryPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

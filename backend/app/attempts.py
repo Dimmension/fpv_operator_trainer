@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from difflib import SequenceMatcher
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -9,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.config import get_settings
-from app.generators import generate_memory_rounds, generate_number_grid
+from app.generators import (
+    generate_correction_grid,
+    generate_memory_rounds,
+    generate_number_grid,
+    generate_statements,
+)
 from app.models import (
     Attempt,
     AttemptEvent,
@@ -27,9 +33,11 @@ from app.schemas import (
     AttemptMetrics,
     AttemptState,
     AttentionActionRequest,
+    CorrectionActionRequest,
     MemoryAnswerRequest,
     MemoryRoundState,
     ModuleSummary,
+    RecallRequest,
 )
 from app.scoring import attention_grade, evaluate_memory_answer, per_minute_pace
 
@@ -121,6 +129,45 @@ def build_attempt_state(attempt: Attempt) -> AttemptState:
             "next_action_sequence": next_event_sequence(attempt),
             "normative_range": config["normative_range"],
         }
+    elif module.exercise_type in {"correction", "dual_correction"}:
+        deadline = started_at + timedelta(milliseconds=config["time_limit_ms"])
+        scan_elapsed = min(elapsed_ms(attempt), config["time_limit_ms"])
+        stage = (
+            "recall"
+            if module.exercise_type == "dual_correction" and scan_elapsed >= config["time_limit_ms"]
+            else "scan"
+        )
+        selected_positions = [
+            event.grid_position
+            for event in attempt.events
+            if event.event_type == EventType.correct_click and event.event_data.get("selected")
+        ]
+        wrong_positions = [
+            event.grid_position
+            for event in attempt.events
+            if event.event_type == EventType.wrong_click and event.event_data.get("selected")
+        ]
+        task = {
+            "cells": attempt.task_snapshot["cells"],
+            "grid_rows": config["grid_rows"],
+            "grid_columns": config["grid_columns"],
+            "target_symbol": config["target_symbol"],
+            "time_limit_ms": config["time_limit_ms"],
+            "line_interval_ms": config["line_interval_ms"],
+            "cursor": attempt.last_found_number if attempt.last_found_number is not None else -1,
+            "selected_positions": selected_positions,
+            "wrong_positions": wrong_positions,
+            "line_marks": correction_line_marks(attempt, scan_elapsed),
+            "next_action_sequence": next_event_sequence(attempt),
+            "stage": stage,
+        }
+        if module.exercise_type == "dual_correction" and stage == "scan":
+            interval = config["statement_interval_ms"]
+            index = scan_elapsed // interval
+            within = scan_elapsed % interval
+            if index < config["statement_count"] and within < config["statement_visible_ms"]:
+                task["visible_statement"] = attempt.task_snapshot["statements"][index]
+                task["visible_statement_number"] = index + 1
     else:
         task = {
             "grid_rows": config["grid_rows"],
@@ -204,9 +251,19 @@ async def create_attempt(session: AsyncSession, module_code: str) -> AttemptStat
     config = dict(level.config)
     if level.module.exercise_type == "sequential_search":
         number_count = config["max_number"] - config["min_number"] + 1
+        task_snapshot = {"cells": generate_number_grid(number_count, start=config["min_number"])}
+    elif level.module.exercise_type in {"correction", "dual_correction"}:
         task_snapshot = {
-            "cells": generate_number_grid(number_count, start=config["min_number"])
+            "cells": generate_correction_grid(
+                config["grid_rows"],
+                config["grid_columns"],
+                config["symbols"],
+                config["target_symbol"],
+                config["target_share"],
+            )
         }
+        if level.module.exercise_type == "dual_correction":
+            task_snapshot["statements"] = generate_statements(config["statement_count"])
     else:
         task_snapshot = {"round_count": config["round_count"]}
 
@@ -245,11 +302,15 @@ async def create_attempt(session: AsyncSession, module_code: str) -> AttemptStat
 async def ensure_attention_timeout(session: AsyncSession, attempt: Attempt) -> None:
     if attempt.status != AttemptStatus.in_progress:
         return
-    if attempt.level.module.exercise_type != "sequential_search":
+    exercise_type = attempt.level.module.exercise_type
+    if exercise_type not in {"sequential_search", "correction"}:
         return
     time_limit = attempt.level_config_snapshot["time_limit_ms"]
     if elapsed_ms(attempt) >= time_limit:
-        await finalize_attention(session, attempt, FinishReason.time_limit)
+        if exercise_type == "sequential_search":
+            await finalize_attention(session, attempt, FinishReason.time_limit)
+        else:
+            await finalize_correction(session, attempt, FinishReason.time_limit)
 
 
 async def finalize_attention(session: AsyncSession, attempt: Attempt, reason: FinishReason) -> None:
@@ -380,6 +441,246 @@ async def record_attention_action(
     return build_attempt_state(attempt)
 
 
+def correction_line_marks(attempt: Attempt, duration: int) -> list[dict[str, int]]:
+    config = attempt.level_config_snapshot
+    interval = config["line_interval_ms"]
+    interval_count = config["time_limit_ms"] // interval
+    return [
+        {
+            "elapsed_ms": mark * interval,
+            "position": max(
+                (
+                    event.grid_position
+                    for event in attempt.events
+                    if event.grid_position is not None
+                    and event.elapsed_ms < mark * interval
+                    and event.event_type in {EventType.correct_click, EventType.wrong_click}
+                ),
+                default=-1,
+            ),
+        }
+        for mark in range(1, min(duration // interval, interval_count - 1) + 1)
+    ]
+
+
+def correction_report(attempt: Attempt, duration: int) -> dict:
+    config = attempt.level_config_snapshot
+    target = config["target_symbol"]
+    cells = attempt.task_snapshot["cells"]
+    cursor = attempt.last_found_number if attempt.last_found_number is not None else -1
+    targets = sum(cell == target for cell in cells)
+    missed = targets - attempt.correct_actions
+    processed = cursor + 1
+    accuracy = round(attempt.correct_actions / targets * 100, 2) if targets else 0
+    interval = config["line_interval_ms"]
+    interval_count = config["time_limit_ms"] // interval
+    pace = []
+    last_position = -1
+    for bucket in range(interval_count):
+        positions = [
+            event.grid_position
+            for event in attempt.events
+            if event.grid_position is not None
+            and bucket * interval <= event.elapsed_ms < (bucket + 1) * interval
+            and event.event_type in {EventType.correct_click, EventType.wrong_click}
+        ]
+        current = max(positions, default=last_position)
+        pace.append(max(0, current - last_position))
+        last_position = current
+    active_pace = pace[: max(1, (duration + interval - 1) // interval)]
+    mean = sum(active_pace) / len(active_pace)
+    fluctuation = round((max(active_pace) - min(active_pace)) / mean * 100, 2) if mean else 0
+    speed = round(processed / max(duration, 1) * 60000, 2)
+    if speed > 150 and accuracy > 95 and fluctuation < 10:
+        grade = "high"
+    elif speed >= 100 and accuracy >= 85 and fluctuation <= 20:
+        grade = "medium"
+    else:
+        grade = "low"
+    return {
+        "processed": processed,
+        "targets": targets,
+        "found": attempt.correct_actions,
+        "missed": missed,
+        "false_marks": attempt.incorrect_actions,
+        "table_score": accuracy,
+        "speed_per_minute": speed,
+        "interval_pace": pace,
+        "fluctuation_percent": fluctuation,
+        "grade": grade,
+        "line_marks": correction_line_marks(attempt, duration),
+    }
+
+
+async def finalize_correction(
+    session: AsyncSession, attempt: Attempt, reason: FinishReason
+) -> None:
+    if attempt.status != AttemptStatus.in_progress:
+        return
+    duration = min(elapsed_ms(attempt), attempt.level_config_snapshot["time_limit_ms"])
+    report = correction_report(attempt, duration)
+    attempt.status = (
+        AttemptStatus.interrupted if reason == FinishReason.interrupted else AttemptStatus.completed
+    )
+    attempt.finish_reason = reason
+    attempt.completed_at = utc_now()
+    attempt.duration_ms = duration
+    attempt.score = Decimal(str(report["table_score"]))
+    attempt.accuracy = attempt.score
+    attempt.speed_per_minute = Decimal(str(report["speed_per_minute"]))
+    attempt.items_found = attempt.correct_actions
+    attempt.result_data = report
+    attempt.events.append(
+        AttemptEvent(
+            sequence_number=next_event_sequence(attempt),
+            event_type=EventType.exercise_interrupted
+            if reason == FinishReason.interrupted
+            else EventType.exercise_completed,
+            elapsed_ms=duration,
+            event_data={"finish_reason": reason.value},
+        )
+    )
+    await session.flush()
+    if attempt.status == AttemptStatus.completed:
+        await update_operator_stats(session, attempt)
+
+
+async def record_correction_action(
+    session: AsyncSession,
+    attempt_id: int,
+    request: CorrectionActionRequest,
+) -> AttemptState:
+    operator = await get_demo_operator(session)
+    attempt = await load_attempt(session, attempt_id, operator.id, lock=True)
+    if attempt.level.module.exercise_type not in {"correction", "dual_correction"}:
+        raise HTTPException(status_code=409, detail="Неверный тип модуля")
+    await ensure_attention_timeout(session, attempt)
+    config = attempt.level_config_snapshot
+    if (
+        attempt.status != AttemptStatus.in_progress
+        or elapsed_ms(attempt) >= config["time_limit_ms"]
+    ):
+        await session.commit()
+        return build_attempt_state(attempt)
+    if any(event.sequence_number == request.sequence_number for event in attempt.events):
+        return build_attempt_state(attempt)
+    if request.sequence_number != next_event_sequence(attempt):
+        raise HTTPException(status_code=409, detail="Неверный номер действия")
+    cells = attempt.task_snapshot["cells"]
+    cursor = attempt.last_found_number if attempt.last_found_number is not None else -1
+    if request.position <= cursor or request.position >= len(cells):
+        raise HTTPException(status_code=422, detail="Просматривайте таблицу слева направо")
+    symbol = cells[request.position]
+    correct = request.selected and symbol == config["target_symbol"]
+    attempt.last_found_number = request.position
+    attempt.total_actions += 1
+    if correct:
+        attempt.correct_actions += 1
+        attempt.items_found += 1
+    elif request.selected:
+        attempt.incorrect_actions += 1
+    attempt.events.append(
+        AttemptEvent(
+            sequence_number=request.sequence_number,
+            event_type=EventType.correct_click if correct else EventType.wrong_click,
+            elapsed_ms=elapsed_ms(attempt),
+            grid_position=request.position,
+            target_value=config["target_symbol"],
+            selected_value=symbol if request.selected else None,
+            is_correct=correct,
+            event_data={"selected": request.selected},
+        )
+    )
+    interval = config["line_interval_ms"]
+    existing_marks = sum(event.event_type == EventType.line_mark for event in attempt.events)
+    due_marks = min(elapsed_ms(attempt) // interval, config["time_limit_ms"] // interval - 1)
+    for mark in range(existing_marks + 1, due_marks + 1):
+        attempt.events.append(
+            AttemptEvent(
+                sequence_number=next_event_sequence(attempt),
+                event_type=EventType.line_mark,
+                elapsed_ms=mark * interval,
+                grid_position=cursor,
+                event_data={"interval": mark},
+            )
+        )
+    if request.position == len(cells) - 1 and attempt.level.module.exercise_type == "correction":
+        await finalize_correction(session, attempt, FinishReason.completed)
+    await session.commit()
+    return build_attempt_state(attempt)
+
+
+async def record_recall(
+    session: AsyncSession, attempt_id: int, request: RecallRequest
+) -> AttemptState:
+    operator = await get_demo_operator(session)
+    attempt = await load_attempt(session, attempt_id, operator.id, lock=True)
+    if attempt.level.module.exercise_type != "dual_correction":
+        raise HTTPException(status_code=409, detail="Неверный тип модуля")
+    if attempt.status != AttemptStatus.in_progress:
+        return build_attempt_state(attempt)
+    config = attempt.level_config_snapshot
+    if elapsed_ms(attempt) < config["time_limit_ms"]:
+        raise HTTPException(status_code=409, detail="Время работы с таблицей ещё не истекло")
+    expected = attempt.task_snapshot["statements"]
+    remaining = set(range(len(expected)))
+    matches = []
+    for answer in request.statements:
+        normalized = " ".join(answer.casefold().split())
+        if not normalized:
+            continue
+        candidates = [
+            (SequenceMatcher(None, normalized, " ".join(expected[i].casefold().split())).ratio(), i)
+            for i in remaining
+        ]
+        if candidates:
+            similarity, index = max(candidates)
+            if similarity >= 0.7:
+                remaining.remove(index)
+                matches.append(
+                    {
+                        "answer": answer,
+                        "statement": expected[index],
+                        "similarity": round(similarity, 2),
+                    }
+                )
+    report = correction_report(attempt, config["time_limit_ms"])
+    memory_score = round(len(matches) / len(expected) * 100, 2)
+    table_score = report["table_score"]
+    balance = round(abs(table_score - memory_score), 2)
+    score = round((table_score + memory_score) / 2, 2)
+    grade = "high" if score >= 80 and balance < 20 else "medium" if score >= 60 else "low"
+    attempt.status = AttemptStatus.completed
+    attempt.finish_reason = FinishReason.time_limit
+    attempt.completed_at = utc_now()
+    attempt.duration_ms = config["time_limit_ms"]
+    attempt.score = Decimal(str(score))
+    attempt.accuracy = Decimal(str(table_score))
+    attempt.speed_per_minute = Decimal(str(report["speed_per_minute"]))
+    attempt.result_data = {
+        **report,
+        "memory_score": memory_score,
+        "balance": balance,
+        "grade": grade,
+        "recalled": len(matches),
+        "statement_count": len(expected),
+        "matches": matches,
+        "missed_statements": [expected[i] for i in sorted(remaining)],
+    }
+    attempt.events.append(
+        AttemptEvent(
+            sequence_number=next_event_sequence(attempt),
+            event_type=EventType.exercise_completed,
+            elapsed_ms=config["time_limit_ms"],
+            event_data={"recalled": len(matches)},
+        )
+    )
+    await session.flush()
+    await update_operator_stats(session, attempt)
+    await session.commit()
+    return build_attempt_state(attempt)
+
+
 async def finish_attempt(session: AsyncSession, attempt_id: int) -> AttemptState:
     operator = await get_demo_operator(session)
     attempt = await load_attempt(session, attempt_id, operator.id, lock=True)
@@ -392,6 +693,8 @@ async def finish_attempt(session: AsyncSession, attempt_id: int) -> AttemptState
                 else FinishReason.interrupted
             )
             await finalize_attention(session, attempt, reason)
+        elif attempt.level.module.exercise_type in {"correction", "dual_correction"}:
+            await finalize_correction(session, attempt, FinishReason.interrupted)
         else:
             attempt.status = AttemptStatus.interrupted
             attempt.finish_reason = FinishReason.interrupted
@@ -651,6 +954,11 @@ async def list_modules(session: AsyncSession) -> list[ModuleSummary]:
                     - active.level_config_snapshot["min_number"]
                     + 1
                 )
+            elif module.exercise_type in {"correction", "dual_correction"}:
+                active_progress = (
+                    active.last_found_number + 1 if active.last_found_number is not None else 0
+                )
+                active_progress_total = len(active.task_snapshot["cells"])
             else:
                 active_progress = sum(round_.answered_at is not None for round_ in active.rounds)
                 active_progress_total = active.level_config_snapshot["round_count"]

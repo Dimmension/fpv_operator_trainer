@@ -3,6 +3,54 @@ from typing import Any
 
 SHAPES = ("circle", "triangle", "square", "cross", "rectangle")
 
+STATEMENTS = (
+    "Проверить уровень заряда",
+    "Записать время наблюдения",
+    "Сигнал связи стабилен",
+    "На экране видны облака",
+    "Отметить изменение освещения",
+    "Высота отображается справа",
+    "Ветер усилился к вечеру",
+    "Проверить журнал сообщений",
+    "Камера направлена вниз",
+    "Сохранить текущие настройки",
+    "Показания датчика обновились",
+    "Экран перешёл в тёмный режим",
+    "Батарея заряжена наполовину",
+    "Прибор показывает температуру",
+    "Запись видео остановлена",
+    "На карте отмечена река",
+    "Появилось уведомление системы",
+    "Проверить состояние камеры",
+    "Время сеанса истекает",
+    "Отображается новая схема",
+    "Показания датчика в норме",
+    "Сменить яркость монитора",
+    "В журнале появилась запись",
+    "Контрольный список заполнен",
+)
+
+
+def generate_correction_grid(
+    rows: int,
+    columns: int,
+    symbols: list[str],
+    target: str,
+    target_share: float,
+    rng: random.Random | None = None,
+) -> list[str]:
+    randomizer = rng or random.SystemRandom()
+    count = rows * columns
+    distractors = [symbol for symbol in symbols if symbol != target]
+    cells = [target] * round(count * target_share)
+    cells.extend(randomizer.choice(distractors) for _ in range(count - len(cells)))
+    randomizer.shuffle(cells)
+    return cells
+
+
+def generate_statements(count: int, rng: random.Random | None = None) -> list[str]:
+    return (rng or random.SystemRandom()).sample(STATEMENTS, count)
+
 
 def generate_number_grid(
     count: int = 100, rng: random.Random | None = None, start: int = 1
