@@ -1,9 +1,10 @@
 [project]
 name = "fpv-operator-trainer"
-version = "0.1.0"
+version = "0.3.0"
 description = "Diagnostics and attention trainer for FPV operators"
 readme = "README.md"
 authors = [
+    { name = "Ivan Fomin", email = "zalthoryn@gmail.com" },
     { name = "Vadim Nikiforov", email = "vvynikiforov@gmail.com" }
 ]
 requires-python = ">=3.12"

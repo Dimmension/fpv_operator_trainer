@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from difflib import SequenceMatcher
@@ -15,6 +16,8 @@ from app.generators import (
     generate_memory_rounds,
     generate_number_grid,
     generate_statements,
+    generate_gorbov_schulte_grid,
+    generate_motor_lines,
 )
 from app.models import (
     Attempt,
@@ -38,8 +41,11 @@ from app.schemas import (
     MemoryRoundState,
     ModuleSummary,
     RecallRequest,
+    SwitchingActionRequest,
+    MotorTrackingSubmitRequest,
+    TappingSubmitRequest,
 )
-from app.scoring import attention_grade, evaluate_memory_answer, per_minute_pace
+from app.scoring import attention_grade, evaluate_memory_answer, per_minute_pace, calculate_tapping_curve
 
 
 def utc_now() -> datetime:
@@ -68,16 +74,16 @@ def next_event_sequence(attempt: Attempt) -> int:
     return max((event.sequence_number for event in attempt.events), default=-1) + 1
 
 
-async def get_demo_operator(session: AsyncSession) -> User:
-    operator = await session.scalar(
-        select(User).where(User.email == get_settings().demo_operator_email)
-    )
-    if operator is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Демонстрационный оператор не создан. Выполните начальное заполнение БД.",
-        )
-    return operator
+# async def get_demo_operator(session: AsyncSession) -> User:
+#     operator = await session.scalar(
+#         select(User).where(User.email == get_settings().demo_operator_email)
+#     )
+#     if operator is None:
+#         raise HTTPException(
+#             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+#             detail="Демонстрационный оператор не создан. Выполните начальное заполнение БД.",
+#         )
+#     return operator
 
 
 def attempt_query(attempt_id: int, operator_id: int, *, lock: bool = False):
@@ -168,6 +174,23 @@ def build_attempt_state(attempt: Attempt) -> AttemptState:
             if index < config["statement_count"] and within < config["statement_visible_ms"]:
                 task["visible_statement"] = attempt.task_snapshot["statements"][index]
                 task["visible_statement_number"] = index + 1
+    elif module.exercise_type == "switching":
+        task = {
+            **attempt.task_snapshot,
+            "grid_rows": config["grid_rows"],
+            "grid_columns": config["grid_columns"],
+            "next_action_sequence": next_event_sequence(attempt),
+        }
+    elif module.exercise_type == "motor":
+        task = {
+            **attempt.task_snapshot,
+            "config": config
+        }
+    elif module.exercise_type == "tapping":
+        task = {
+            **attempt.task_snapshot,
+            "interval_ms": config.get("interval_ms", 5000)
+        }
     else:
         task = {
             "grid_rows": config["grid_rows"],
@@ -211,8 +234,7 @@ def build_attempt_state(attempt: Attempt) -> AttemptState:
     )
 
 
-async def create_attempt(session: AsyncSession, module_code: str) -> AttemptState:
-    operator = await get_demo_operator(session)
+async def create_attempt(session: AsyncSession, module_code: str, user: User) -> AttemptState:
     level = await session.scalar(
         select(ModuleLevel)
         .join(ModuleLevel.module)
@@ -230,7 +252,7 @@ async def create_attempt(session: AsyncSession, module_code: str) -> AttemptStat
     active = await session.scalar(
         select(Attempt)
         .where(
-            Attempt.operator_id == operator.id,
+            Attempt.operator_id == user.id,
             Attempt.level_id == level.id,
             Attempt.status == AttemptStatus.in_progress,
         )
@@ -264,11 +286,24 @@ async def create_attempt(session: AsyncSession, module_code: str) -> AttemptStat
         }
         if level.module.exercise_type == "dual_correction":
             task_snapshot["statements"] = generate_statements(config["statement_count"])
+    elif level.module.exercise_type == "switching":
+        task_snapshot = {
+            "cells": generate_gorbov_schulte_grid(config["arabic_count"], config["roman_count"]),
+            "current_phase": 1, 
+            "phase_start_time_ms": 0,
+            "times": {"1": 0, "2": 0, "3": 0}
+        }
+    elif level.module.exercise_type == "motor":
+        task_snapshot = {
+            "lines": generate_motor_lines(config.get("lines_count", 3), config.get("line_width_px", 20))
+        }
+    elif level.module.exercise_type == "tapping":
+        task_snapshot = {"intervals": config.get("intervals_count", 6)}
     else:
         task_snapshot = {"round_count": config["round_count"]}
 
     attempt = Attempt(
-        operator_id=operator.id,
+        operator_id=user.id,
         level=level,
         status=AttemptStatus.in_progress,
         level_config_snapshot=config,
@@ -374,10 +409,9 @@ async def finalize_attention(session: AsyncSession, attempt: Attempt, reason: Fi
 
 
 async def record_attention_action(
-    session: AsyncSession, attempt_id: int, request: AttentionActionRequest
+    session: AsyncSession, attempt_id: int, request: AttentionActionRequest, user: User
 ) -> AttemptState:
-    operator = await get_demo_operator(session)
-    attempt = await load_attempt(session, attempt_id, operator.id, lock=True)
+    attempt = await load_attempt(session, attempt_id, user.id, lock=True)
     if attempt.level.module.exercise_type != "sequential_search":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Неверный тип модуля")
 
@@ -488,7 +522,7 @@ def correction_report(attempt: Attempt, duration: int) -> dict:
         pace.append(max(0, current - last_position))
         last_position = current
     active_pace = pace[: max(1, (duration + interval - 1) // interval)]
-    mean = sum(active_pace) / len(active_pace)
+    mean = sum(active_pace) / len(active_pace) if active_pace else 0
     fluctuation = round((max(active_pace) - min(active_pace)) / mean * 100, 2) if mean else 0
     speed = round(processed / max(duration, 1) * 60000, 2)
     if speed > 150 and accuracy > 95 and fluctuation < 10:
@@ -549,9 +583,9 @@ async def record_correction_action(
     session: AsyncSession,
     attempt_id: int,
     request: CorrectionActionRequest,
+    user: User
 ) -> AttemptState:
-    operator = await get_demo_operator(session)
-    attempt = await load_attempt(session, attempt_id, operator.id, lock=True)
+    attempt = await load_attempt(session, attempt_id, user.id, lock=True)
     if attempt.level.module.exercise_type not in {"correction", "dual_correction"}:
         raise HTTPException(status_code=409, detail="Неверный тип модуля")
     await ensure_attention_timeout(session, attempt)
@@ -611,10 +645,9 @@ async def record_correction_action(
 
 
 async def record_recall(
-    session: AsyncSession, attempt_id: int, request: RecallRequest
+    session: AsyncSession, attempt_id: int, request: RecallRequest, user: User
 ) -> AttemptState:
-    operator = await get_demo_operator(session)
-    attempt = await load_attempt(session, attempt_id, operator.id, lock=True)
+    attempt = await load_attempt(session, attempt_id, user.id, lock=True)
     if attempt.level.module.exercise_type != "dual_correction":
         raise HTTPException(status_code=409, detail="Неверный тип модуля")
     if attempt.status != AttemptStatus.in_progress:
@@ -681,9 +714,8 @@ async def record_recall(
     return build_attempt_state(attempt)
 
 
-async def finish_attempt(session: AsyncSession, attempt_id: int) -> AttemptState:
-    operator = await get_demo_operator(session)
-    attempt = await load_attempt(session, attempt_id, operator.id, lock=True)
+async def finish_attempt(session: AsyncSession, attempt_id: int, user: User) -> AttemptState:
+    attempt = await load_attempt(session, attempt_id, user.id, lock=True)
     if attempt.status == AttemptStatus.in_progress:
         if attempt.level.module.exercise_type == "sequential_search":
             limit = attempt.level_config_snapshot["time_limit_ms"]
@@ -709,9 +741,9 @@ async def record_memory_answer(
     attempt_id: int,
     round_number: int,
     request: MemoryAnswerRequest,
+    user: User
 ) -> AttemptState:
-    operator = await get_demo_operator(session)
-    attempt = await load_attempt(session, attempt_id, operator.id, lock=True)
+    attempt = await load_attempt(session, attempt_id, user.id, lock=True)
     if attempt.level.module.exercise_type != "visual_memory":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Неверный тип модуля")
     if attempt.status != AttemptStatus.in_progress:
@@ -823,6 +855,195 @@ async def finalize_memory(session: AsyncSession, attempt: Attempt) -> None:
     await update_operator_stats(session, attempt)
 
 
+async def record_switching_action(session: AsyncSession, attempt_id: int, request: SwitchingActionRequest, user: User) -> AttemptState:
+    attempt = await load_attempt(session, attempt_id, user.id, lock=True)
+    if attempt.status != AttemptStatus.in_progress or attempt.level.module.exercise_type != "switching":
+        return build_attempt_state(attempt)
+    
+    # Deepcopy is essential so SQLAlchemy detects mutation in JSONB field
+    task = copy.deepcopy(attempt.task_snapshot)
+    phase = task["current_phase"]
+    cells = task["cells"]
+    
+    expected_type = ""
+    expected_val = 0
+    
+    if phase == 1:
+        expected_type = "arabic"
+        expected_val = attempt.items_found + 1
+    elif phase == 2:
+        expected_type = "roman"
+        expected_val = attempt.level_config_snapshot["roman_count"] - attempt.items_found
+    elif phase == 3:
+        if attempt.items_found % 2 == 0:
+            expected_type = "arabic"
+            expected_val = (attempt.items_found // 2) + 1
+        else:
+            expected_type = "roman"
+            expected_val = attempt.level_config_snapshot["roman_count"] - (attempt.items_found // 2)
+
+    cell = cells[request.position]
+    is_correct = (cell["type"] == expected_type and cell["value"] == expected_val)
+    
+    attempt.total_actions += 1
+    if is_correct:
+        attempt.correct_actions += 1
+        attempt.items_found += 1
+    else:
+        attempt.incorrect_actions += 1
+
+    if "reactions" not in task:
+        task["reactions"] = {"1": [], "2": [], "3": []}
+        task["errors"] = {"1": 0, "2": 0, "3": 0}
+        
+    if is_correct:
+        task["reactions"][str(phase)].append(request.reaction_time_ms)
+    else:
+        task["errors"][str(phase)] += 1
+
+    attempt.events.append(
+        AttemptEvent(
+            sequence_number=request.sequence_number,
+            event_type=EventType.correct_click if is_correct else EventType.wrong_click,
+            elapsed_ms=request.elapsed_ms,
+            reaction_time_ms=request.reaction_time_ms,
+            grid_position=request.position,
+            is_correct=is_correct,
+            event_data={"phase": phase}
+        )
+    )
+
+    phase_completed = False
+    if phase == 1 and attempt.items_found == attempt.level_config_snapshot["arabic_count"]:
+        phase_completed = True
+    elif phase == 2 and attempt.items_found == attempt.level_config_snapshot["roman_count"]:
+        phase_completed = True
+    elif phase == 3 and attempt.items_found == (attempt.level_config_snapshot["arabic_count"] + attempt.level_config_snapshot["roman_count"]):
+        phase_completed = True
+
+    if phase_completed:
+        phase_time = request.elapsed_ms - task.get("phase_start_time_ms", 0)
+        task["times"][str(phase)] = phase_time
+        attempt.items_found = 0 
+        
+        if phase < 3:
+            task["current_phase"] += 1
+            task["phase_start_time_ms"] = request.elapsed_ms
+        else:
+            t1, t2, t3 = task["times"]["1"], task["times"]["2"], task["times"]["3"]
+            switch_cost = max(0, t3 - (t1 + t2))
+            
+            r1 = sum(task["reactions"]["1"]) / len(task["reactions"]["1"]) if task["reactions"]["1"] else 0
+            r2 = sum(task["reactions"]["2"]) / len(task["reactions"]["2"]) if task["reactions"]["2"] else 0
+            r3 = sum(task["reactions"]["3"]) / len(task["reactions"]["3"]) if task["reactions"]["3"] else 0
+            
+            grade = "high" if switch_cost <= 10000 else "medium" if switch_cost <= 25000 else "low"
+            
+            attempt.status = AttemptStatus.completed
+            attempt.finish_reason = FinishReason.completed
+            attempt.duration_ms = request.elapsed_ms
+            attempt.completed_at = utc_now()
+            attempt.score = Decimal(str(max(0, 100 - (switch_cost / 1000))))
+            attempt.accuracy = Decimal(str(round(attempt.correct_actions / attempt.total_actions * 100, 2)))
+            attempt.result_data = {
+                "t1_ms": t1, "t2_ms": t2, "t3_ms": t3,
+                "switch_cost_ms": switch_cost,
+                "grade": grade,
+                "errors": task["errors"],
+                "avg_reactions": {"1": round(r1), "2": round(r2), "3": round(r3)},
+                "total_errors": sum(task["errors"].values())
+            }
+            await update_operator_stats(session, attempt)
+
+    attempt.task_snapshot = task
+    await session.commit()
+    return build_attempt_state(attempt)
+
+
+async def record_motor_result(session: AsyncSession, attempt_id: int, request: MotorTrackingSubmitRequest, user: User) -> AttemptState:
+    attempt = await load_attempt(session, attempt_id, user.id, lock=True)
+    if attempt.status != AttemptStatus.in_progress:
+        return build_attempt_state(attempt)
+    
+    # Вычисляем комплексные метрики
+    time_in_bounds = max(0, request.total_time_ms - request.time_out_of_line_ms)
+    # accuracy = round(max(0, (request.total_time_ms - request.time_out_of_line_ms) / request.total_time_ms * 100), 2) if request.total_time_ms else 0
+    accuracy = round(time_in_bounds / max(request.total_time_ms, 1) * 100, 2) if request.total_time_ms else 0
+    grade = "high" if request.error_count <= 2 else "medium" if request.error_count <= 5 else "low"
+    
+    # КММ (Коэффициент мелкой моторики) = Точность(%) - (Ошибки * Штраф) + (Скорость * Бонус)
+    kmm = accuracy - (request.error_count * 1.5) + (request.smoothness_score * 0.1)
+    kmm = max(0, min(100, round(kmm, 1)))
+
+    if kmm >= 85: grade = "high"
+    elif kmm >= 60: grade = "medium"
+    else: grade = "low"
+    
+    attempt.status = AttemptStatus.completed
+    attempt.finish_reason = FinishReason.completed
+    attempt.completed_at = utc_now()
+    attempt.duration_ms = request.total_time_ms
+    attempt.score = Decimal(str(kmm))
+    attempt.accuracy = Decimal(str(accuracy))
+    attempt.incorrect_actions = request.error_count
+    attempt.result_data = {
+        "kmm": kmm,
+        "time_out_ms": request.time_out_of_line_ms,
+        "error_count": request.error_count,
+        "smoothness": round(request.smoothness_score, 1),
+        "velocity": round(request.velocity_px_s, 1),
+        "path_length": round(request.path_length_px),
+        "grade": grade,
+        "accuracy_percent": accuracy
+    }
+    await session.flush()
+    await update_operator_stats(session, attempt)
+    await session.commit()
+    return build_attempt_state(attempt)
+
+
+async def record_tapping_result(session: AsyncSession, attempt_id: int, request: TappingSubmitRequest, user: User) -> AttemptState:
+    attempt = await load_attempt(session, attempt_id, user.id, lock=True)
+    if attempt.status != AttemptStatus.in_progress:
+        return build_attempt_state(attempt)
+    
+    total_taps = sum(request.intervals)
+    curve_data = calculate_tapping_curve(request.intervals)
+    
+    first = request.intervals[0] if request.intervals else 1
+    last = request.intervals[-1] if request.intervals else 1
+    max_val = max(request.intervals) if request.intervals else 1
+    min_val = min(request.intervals) if request.intervals else 1
+
+    fatigue_index = round((first - last) / max(first, 1) * 100, 2)
+    mobilization = round((max_val - first) / max(first, 1) * 100, 2)
+    stability = round((min_val / max(max_val, 1)) * 100, 2)
+    
+    attempt.status = AttemptStatus.completed
+    attempt.finish_reason = FinishReason.completed
+    attempt.completed_at = utc_now()
+    attempt.duration_ms = len(request.intervals) * attempt.level_config_snapshot.get("interval_ms", 5000)
+    attempt.score = Decimal(str(total_taps))
+    attempt.accuracy = Decimal(100) 
+    attempt.total_actions = total_taps
+    attempt.correct_actions = total_taps
+    attempt.result_data = {
+        "intervals": request.intervals,
+        "total": total_taps,
+        "curve_type": curve_data["type"],
+        "description": curve_data["description"],
+        "fatigue_index": fatigue_index,
+        "mobilization": mobilization,
+        "stability": stability,
+        "average": round(total_taps / max(len(request.intervals), 1), 1),
+        "max": max_val
+    }
+    await session.flush()
+    await update_operator_stats(session, attempt)
+    await session.commit()
+    return build_attempt_state(attempt)
+
+
 async def update_operator_stats(session: AsyncSession, attempt: Attempt) -> None:
     all_count = await session.scalar(
         select(func.count(Attempt.id)).where(
@@ -875,16 +1096,14 @@ async def update_operator_stats(session: AsyncSession, attempt: Attempt) -> None
     stats.last_completed_at = attempt.completed_at
 
 
-async def get_attempt_state(session: AsyncSession, attempt_id: int) -> AttemptState:
-    operator = await get_demo_operator(session)
-    attempt = await load_attempt(session, attempt_id, operator.id)
+async def get_attempt_state(session: AsyncSession, attempt_id: int, user: User) -> AttemptState:
+    attempt = await load_attempt(session, attempt_id, user.id)
     await ensure_attention_timeout(session, attempt)
     await session.commit()
     return build_attempt_state(attempt)
 
 
-async def list_modules(session: AsyncSession) -> list[ModuleSummary]:
-    operator = await get_demo_operator(session)
+async def list_modules(session: AsyncSession, user: User) -> list[ModuleSummary]:
     modules = (
         await session.scalars(
             select(TrainingModule)
@@ -907,7 +1126,7 @@ async def list_modules(session: AsyncSession) -> list[ModuleSummary]:
             select(Attempt)
             .join(Attempt.level)
             .where(
-                Attempt.operator_id == operator.id,
+                Attempt.operator_id == user.id,
                 ModuleLevel.module_id == module.id,
                 Attempt.status == AttemptStatus.in_progress,
             )
@@ -928,7 +1147,7 @@ async def list_modules(session: AsyncSession) -> list[ModuleSummary]:
             select(Attempt)
             .join(Attempt.level)
             .where(
-                Attempt.operator_id == operator.id,
+                Attempt.operator_id == user.id,
                 ModuleLevel.module_id == module.id,
                 Attempt.status == AttemptStatus.completed,
             )
@@ -939,7 +1158,7 @@ async def list_modules(session: AsyncSession) -> list[ModuleSummary]:
             select(func.count(Attempt.id))
             .join(Attempt.level)
             .where(
-                Attempt.operator_id == operator.id,
+                Attempt.operator_id == user.id,
                 ModuleLevel.module_id == module.id,
                 Attempt.status == AttemptStatus.completed,
             )
@@ -959,9 +1178,19 @@ async def list_modules(session: AsyncSession) -> list[ModuleSummary]:
                     active.last_found_number + 1 if active.last_found_number is not None else 0
                 )
                 active_progress_total = len(active.task_snapshot["cells"])
-            else:
+            elif module.exercise_type == "visual_memory":
                 active_progress = sum(round_.answered_at is not None for round_ in active.rounds)
                 active_progress_total = active.level_config_snapshot["round_count"]
+            elif module.exercise_type == "switching":
+                active_progress = active.task_snapshot.get("current_phase", 1)
+                active_progress_total = 3
+            elif module.exercise_type == "motor":
+                active_progress = 0
+                active_progress_total = active.level_config_snapshot.get("lines_count", 3)
+            elif module.exercise_type == "tapping":
+                active_progress = 0
+                active_progress_total = active.level_config_snapshot.get("intervals_count", 6)
+
         result.append(
             ModuleSummary(
                 code=module.code,
@@ -981,14 +1210,13 @@ async def list_modules(session: AsyncSession) -> list[ModuleSummary]:
     return result
 
 
-async def list_attempts(session: AsyncSession) -> list[AttemptHistoryItem]:
-    operator = await get_demo_operator(session)
+async def list_attempts(session: AsyncSession, user: User) -> list[AttemptHistoryItem]:
     active = (
         (
             await session.scalars(
                 select(Attempt)
                 .where(
-                    Attempt.operator_id == operator.id, Attempt.status == AttemptStatus.in_progress
+                    Attempt.operator_id == user.id, Attempt.status == AttemptStatus.in_progress
                 )
                 .options(
                     joinedload(Attempt.level).joinedload(ModuleLevel.module),
@@ -1009,7 +1237,7 @@ async def list_attempts(session: AsyncSession) -> list[AttemptHistoryItem]:
             await session.scalars(
                 select(Attempt)
                 .where(
-                    Attempt.operator_id == operator.id, Attempt.status != AttemptStatus.in_progress
+                    Attempt.operator_id == user.id, Attempt.status != AttemptStatus.in_progress
                 )
                 .options(joinedload(Attempt.level).joinedload(ModuleLevel.module))
                 .order_by(Attempt.started_at.desc())

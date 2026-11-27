@@ -17,6 +17,8 @@ from app.models import (
     UserStatus,
 )
 
+from app.auth import get_password_hash
+
 MODULES = (
     {
         "code": "sequential-search",
@@ -108,6 +110,54 @@ MODULES = (
             },
         },
     },
+    # Добавьте в конец кортежа MODULES в seed.py
+    {
+        "code": "attention-switching",
+        "title": "Оценка уровня переключения внимания",
+        "description": "Поочередный поиск арабских (по возрастанию) и римских (по убыванию) чисел.",
+        "exercise_type": "switching",
+        "level": {
+            "level_number": 1,
+            "title": "Базовый режим",
+            "instructions": "1 этап: Арабские 1-25. 2 этап: Римские XXIV-I. 3 этап: Попеременно 1-XXIV-2-XXIII...",
+            "config": {
+                "grid_rows": 7,
+                "grid_columns": 7,
+                "arabic_count": 25,
+                "roman_count": 24,
+            },
+        },
+    },
+    {
+        "code": "fine-motor-skills",
+        "title": "Оценка уровня мелкой моторики",
+        "description": "Проведение курсора по заданным траекториям.",
+        "exercise_type": "motor",
+        "level": {
+            "level_number": 1,
+            "title": "Базовый режим",
+            "instructions": "Проведите курсор от начала до конца каждой линии, не выходя за ее границы.",
+            "config": {
+                "lines_count": 3,
+                "line_width_px": 20,
+            },
+        },
+    },
+    {
+        "code": "nervous-system",
+        "title": "Оценка состояния нервной системы",
+        "description": "Теппинг-тест. Оценка выносливости и типа нервной системы.",
+        "exercise_type": "tapping",
+        "level": {
+            "level_number": 1,
+            "title": "Базовый режим",
+            "instructions": "Кликайте как можно быстрее в подсвеченном квадрате. Переход каждые 5 секунд.",
+            "config": {
+                "intervals_count": 6,
+                "interval_ms": 5000,
+            },
+        },
+    },
 )
 
 BANDS = (
@@ -128,8 +178,12 @@ async def seed_database(session: AsyncSession) -> None:
                 name="Демонстрационный оператор",
                 callsign="Контур-01",
                 email=settings.demo_operator_email,
+                password_hash=get_password_hash("operator123")
             )
         )
+    else:
+        if not operator.password_hash:
+            operator.password_hash = get_password_hash("operator123")
 
     for data in MODULES:
         module = await session.scalar(

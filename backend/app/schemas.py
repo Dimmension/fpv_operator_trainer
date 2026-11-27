@@ -22,7 +22,8 @@ class ModuleSummary(BaseModel):
 
 class StartAttemptRequest(BaseModel):
     module_code: Literal[
-        "sequential-search", "visual-memory", "attention-endurance", "divided-attention"
+        "sequential-search", "visual-memory", "attention-endurance", "divided-attention",
+        "attention-switching", "fine-motor-skills", "nervous-system"
     ]
 
 
@@ -115,3 +116,48 @@ class AttemptHistoryItem(BaseModel):
 
 class HealthResponse(BaseModel):
     status: Literal["ok"]
+
+
+class SwitchingActionRequest(BaseModel):
+    sequence_number: int = Field(ge=1)
+    position: int = Field(ge=0)
+    elapsed_ms: int = Field(ge=0)
+    reaction_time_ms: int = Field(ge=0)
+
+
+class MotorTrackingSubmitRequest(BaseModel):
+    total_time_ms: int
+    time_out_of_line_ms: int
+    error_count: int
+    smoothness_score: float
+    path_length_px: float
+    velocity_px_s: float
+
+
+class TappingSubmitRequest(BaseModel):
+    intervals: list[int]
+
+
+class UserProfile(BaseModel):
+    id: int
+    email: str
+    name: str
+    callsign: str | None
+
+
+class AuthRegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: str
+    callsign: str | None = None
+
+
+class AuthLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserProfile

@@ -1,0 +1,332 @@
+/* ========================================================
+   ГЛОБАЛЬНЫЙ ДВИЖОК ДИЗАЙН-СИСТЕМ
+   ======================================================== */
+
+body, header, .card, button, input, .eyebrow, .back-link {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* ========================================================
+   1. APPLE MODERN (Светлая тема, премиальный минимализм)
+   ======================================================== */
+[data-theme="apple"] {
+  --bg-app: #F5F5F7;
+  --bg-card: #FFFFFF;
+  --text-main: #1D1D1F;
+  --text-muted: #86868B;
+  --accent: #0071E3;
+  --accent-hover: #0077ED;
+  --border: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="apple"] body {
+  background-color: var(--bg-app) !important;
+  color: var(--text-main) !important;
+}
+
+[data-theme="apple"] header {
+  background-color: rgba(245, 245, 247, 0.8) !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+[data-theme="apple"] header strong,
+[data-theme="apple"] header span,
+[data-theme="apple"] .nav-link {
+  color: #1D1D1F !important;
+}
+
+/* Карточки Apple: белый глянец, мягкая тень, сильное скругление */
+[data-theme="apple"] .card,
+[data-theme="apple"] [class*="bg-slate-900"],
+[data-theme="apple"] [class*="bg-slate-950"] {
+  background-color: #FFFFFF !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04) !important;
+  color: #1D1D1F !important;
+}
+
+/* Кнопки Apple: гладкие пилюли (Pill-shaped) */
+[data-theme="apple"] button:not([role="gridcell"]),
+[data-theme="apple"] .button {
+  border-radius: 9999px !important;
+  font-weight: 500 !important;
+}
+
+/* Главная кнопка действия (Начать тест и т.д.) */
+[data-theme="apple"] button.bg-primary,
+[data-theme="apple"] button[class*="bg-cyan"],
+[data-theme="apple"] button:not([class*="bg-slate"]):not([class*="border-"]):not([role="gridcell"]) {
+  background-color: #0071E3 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.3) !important;
+}
+[data-theme="apple"] button.bg-primary:hover {
+  background-color: #0077ED !important;
+}
+
+/* Второстепенные кнопки и ссылки "Назад к модулям" */
+[data-theme="apple"] .back-link,
+[data-theme="apple"] [class*="text-cyan"] {
+  color: #0071E3 !important;
+}
+
+[data-theme="apple"] .eyebrow {
+  color: #0071E3 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.05em !important;
+}
+
+[data-theme="apple"] .text-white {
+  color: #1D1D1F !important;
+}
+[data-theme="apple"] .text-slate-400,
+[data-theme="apple"] .text-slate-500 {
+  color: #86868B !important;
+}
+
+
+/* ========================================================
+   2. EARTHY MINIMAL (Органический теплый крафт)
+   ======================================================== */
+[data-theme="earthy"] {
+  --bg-app: #F8F6EE;
+  --bg-card: #FFFFFF;
+  --text-main: #2E3A2F;
+  --text-muted: #6B7F5B;
+  --accent: #C96F4F;
+}
+
+[data-theme="earthy"] body {
+  background-color: #F8F6EE !important;
+  color: #2E3A2F !important;
+}
+
+[data-theme="earthy"] header {
+  background-color: rgba(248, 246, 238, 0.9) !important;
+  border-bottom: 1px solid #D9C9B2 !important;
+}
+
+[data-theme="earthy"] header strong,
+[data-theme="earthy"] .nav-link {
+  color: #2E3A2F !important;
+}
+
+[data-theme="earthy"] .card,
+[data-theme="earthy"] [class*="bg-slate-900"],
+[data-theme="earthy"] [class*="bg-slate-950"] {
+  background-color: #FFFFFF !important;
+  border: 1px solid #D9C9B2 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(46, 58, 47, 0.05) !important;
+  color: #2E3A2F !important;
+}
+
+/* Кнопки Earthy: природная терракота */
+[data-theme="earthy"] button:not([role="gridcell"]) {
+  border-radius: 10px !important;
+}
+
+[data-theme="earthy"] button.bg-primary,
+[data-theme="earthy"] button[class*="bg-cyan"],
+[data-theme="earthy"] button:not([class*="bg-slate"]):not([class*="border-"]):not([role="gridcell"]) {
+  background-color: #C96F4F !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="earthy"] .eyebrow {
+  color: #6B7F5B !important;
+  letter-spacing: 0.15em !important;
+}
+
+[data-theme="earthy"] .back-link,
+[data-theme="earthy"] [class*="text-cyan"] {
+  color: #C96F4F !important;
+}
+
+[data-theme="earthy"] .text-white {
+  color: #2E3A2F !important;
+}
+[data-theme="earthy"] .text-slate-400,
+[data-theme="earthy"] .text-slate-500 {
+  color: #7D796B !important;
+}
+
+
+/* ========================================================
+   3. VIBRANT SUNSET (Пурпурно-закатный нео-гласс)
+   ======================================================== */
+[data-theme="sunset"] body {
+  background: radial-gradient(circle at 50% 0%, #301E35 0%, #1A111E 100%) !important;
+  color: #FDF7FD !important;
+}
+
+[data-theme="sunset"] header {
+  background-color: rgba(26, 17, 30, 0.85) !important;
+  border-bottom: 1px solid rgba(190, 92, 169, 0.25) !important;
+}
+
+[data-theme="sunset"] .card,
+[data-theme="sunset"] [class*="bg-slate-900"],
+[data-theme="sunset"] [class*="bg-slate-950"] {
+  background-color: rgba(45, 29, 50, 0.7) !important;
+  border: 1px solid rgba(190, 92, 169, 0.25) !important;
+  border-radius: 18px !important;
+  backdrop-filter: blur(16px) !important;
+  box-shadow: 0 8px 32px rgba(190, 92, 169, 0.12) !important;
+  color: #FDF7FD !important;
+}
+
+/* Кнопки Sunset: яркий градиент фуксии */
+[data-theme="sunset"] button:not([role="gridcell"]) {
+  border-radius: 14px !important;
+}
+
+[data-theme="sunset"] button.bg-primary,
+[data-theme="sunset"] button[class*="bg-cyan"],
+[data-theme="sunset"] button:not([class*="bg-slate"]):not([class*="border-"]):not([role="gridcell"]) {
+  background: linear-gradient(135deg, #BE5CA9 0%, #792867 100%) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 20px rgba(190, 92, 169, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+[data-theme="sunset"] .eyebrow,
+[data-theme="sunset"] .back-link,
+[data-theme="sunset"] [class*="text-cyan"] {
+  color: #BE5CA9 !important;
+  text-shadow: 0 0 14px rgba(190, 92, 169, 0.4);
+}
+
+
+/* ========================================================
+   4. OCEAN BREEZE (Морская лазурь и глубина)
+   ======================================================== */
+[data-theme="ocean"] body {
+  background: radial-gradient(circle at 50% 0%, #0C213D 0%, #050E1A 100%) !important;
+  color: #E8F6FF !important;
+}
+
+[data-theme="ocean"] header {
+  background-color: rgba(5, 14, 26, 0.85) !important;
+  border-bottom: 1px solid rgba(59, 167, 242, 0.25) !important;
+}
+
+[data-theme="ocean"] .card,
+[data-theme="ocean"] [class*="bg-slate-900"],
+[data-theme="ocean"] [class*="bg-slate-950"] {
+  background-color: #0A1C33 !important;
+  border: 1px solid rgba(59, 167, 242, 0.25) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4) !important;
+  color: #E8F6FF !important;
+}
+
+/* Кнопки Ocean: лазурный океан */
+[data-theme="ocean"] button:not([role="gridcell"]) {
+  border-radius: 12px !important;
+}
+
+[data-theme="ocean"] button.bg-primary,
+[data-theme="ocean"] button[class*="bg-cyan"],
+[data-theme="ocean"] button:not([class*="bg-slate"]):not([class*="border-"]):not([role="gridcell"]) {
+  background: linear-gradient(135deg, #3BA7F2 0%, #0B3D91 100%) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 4px 18px rgba(59, 167, 242, 0.35) !important;
+}
+
+[data-theme="ocean"] .eyebrow,
+[data-theme="ocean"] .back-link,
+[data-theme="ocean"] [class*="text-cyan"] {
+  color: #7FE7D6 !important;
+}
+
+
+/* ========================================================
+   5. TACTICAL STEALTH (FPV Drone HUD — военный интерфейс)
+   ======================================================== */
+[data-theme="tactical"] body {
+  background-color: #080B0D !important;
+  color: #D3DFE4 !important;
+}
+
+[data-theme="tactical"] header {
+  background-color: #0E1317 !important;
+  border-bottom: 2px solid #38D9A9 !important;
+}
+
+/* Прямоугольные рубленые формы HUD */
+[data-theme="tactical"] .card,
+[data-theme="tactical"] [class*="bg-slate-900"],
+[data-theme="tactical"] [class*="bg-slate-950"] {
+  background-color: #10161A !important;
+  border: 1px solid rgba(56, 217, 169, 0.35) !important;
+  border-radius: 2px !important; /* Строгие углы */
+  box-shadow: inset 0 0 20px rgba(56, 217, 169, 0.03) !important;
+}
+
+[data-theme="tactical"] button:not([role="gridcell"]) {
+  border-radius: 2px !important;
+  font-family: monospace !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+}
+
+[data-theme="tactical"] button.bg-primary,
+[data-theme="tactical"] button[class*="bg-cyan"],
+[data-theme="tactical"] button:not([class*="bg-slate"]):not([class*="border-"]):not([role="gridcell"]) {
+  background-color: #38D9A9 !important;
+  color: #080B0D !important;
+  font-weight: 800 !important;
+}
+
+[data-theme="tactical"] .eyebrow {
+  color: #38D9A9 !important;
+  font-family: monospace !important;
+  letter-spacing: 0.25em !important;
+}
+
+[data-theme="tactical"] .back-link,
+[data-theme="tactical"] [class*="text-cyan"] {
+  color: #38D9A9 !important;
+}
+
+
+/* ========================================================
+   6. NORDIC FROST (Морозный графит)
+   ======================================================== */
+[data-theme="nordic"] body {
+  background-color: #0F1216 !important;
+  color: #F1F3F5 !important;
+}
+
+[data-theme="nordic"] header {
+  background-color: #171B22 !important;
+  border-bottom: 1px solid #2B3240 !important;
+}
+
+[data-theme="nordic"] .card,
+[data-theme="nordic"] [class*="bg-slate-900"],
+[data-theme="nordic"] [class*="bg-slate-950"] {
+  background-color: #181D26 !important;
+  border: 1px solid #2B3240 !important;
+  border-radius: 10px !important;
+}
+
+[data-theme="nordic"] button:not([role="gridcell"]) {
+  border-radius: 8px !important;
+}
+
+[data-theme="nordic"] button.bg-primary,
+[data-theme="nordic"] button[class*="bg-cyan"],
+[data-theme="nordic"] button:not([class*="bg-slate"]):not([class*="border-"]):not([role="gridcell"]) {
+  background-color: #3B82F6 !important;
+  color: #FFFFFF !important;
+}
+
+[data-theme="nordic"] .eyebrow,
+[data-theme="nordic"] .back-link,
+[data-theme="nordic"] [class*="text-cyan"] {
+  color: #60A5FA !important;
+}

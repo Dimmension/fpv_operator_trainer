@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Eye, ScanSearch, Timer, Trophy, Focus, PanelsTopLeft } from "lucide-react";
+import { ArrowRight, Eye, ScanSearch, Timer, Trophy, Focus, PanelsTopLeft, Shuffle, MousePointer2, Activity } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -25,6 +25,15 @@ const moduleMeta = {
   "divided-attention": {
     href: "/modules/divided", icon: PanelsTopLeft, marker: "04",
   },
+  "attention-switching": {
+    href: "/modules/switching", icon: Shuffle, marker: "05"
+  },
+  "fine-motor-skills": {
+    href: "/modules/motor", icon: MousePointer2, marker: "06"
+  },
+  "nervous-system": {
+    href: "/modules/tapping", icon: Activity, marker: "07"
+  },
 } as const;
 
 function moduleFacts(code: string, config: Record<string, unknown>): [string, string] {
@@ -42,6 +51,16 @@ function moduleFacts(code: string, config: Record<string, unknown>): [string, st
   const rounds = Number(config.round_count ?? 1);
   const rows = Number(config.grid_rows ?? 5);
   const columns = Number(config.grid_columns ?? 5);
+  if (code === "attention-switching") {
+    return ["49 чисел", "Без лимита"];
+  }
+  if (code === "fine-motor-skills") {
+    return [`${config.lines_count ?? 3} линий`, "На точность"];
+  }
+  if (code === "nervous-system") {
+    return ["6 интервалов", "30 сек."];
+  }
+
   return [`${rounds} раунд`, `${rows} × ${columns}`];
 }
 

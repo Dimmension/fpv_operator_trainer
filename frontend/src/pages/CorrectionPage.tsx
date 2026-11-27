@@ -184,39 +184,48 @@ export function CorrectionPage({ moduleCode }: { moduleCode: ModuleCode }) {
   );
 
   if (attempt.status !== "in_progress") {
-    const result = (attempt.result ?? {}) as CorrectionResult;
-    const gradeLabels: Record<string, string> = { high: "Высокий", medium: "Средний", low: "Низкий" };
-    const gradeLabel = gradeLabels[result.grade] ?? "—";
-    return <ResultPanel attempt={attempt} title={title} scoreLabel={divided ? "Общий балл, %" : "Найдено целей, %"} onRepeat={start}>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Metric label="Уровень" value={gradeLabel} />
-        <Metric label="Найдено / всего" value={`${result.found ?? 0} / ${result.targets ?? 0}`} />
-        <Metric label="Пропуски / лишние отметки" value={`${result.missed ?? 0} / ${result.false_marks ?? 0}`} />
-        <Metric label="Скорость, знаков/мин" value={String(result.speed_per_minute ?? 0)} />
-        <Metric label="Колебания темпа" value={`${result.fluctuation_percent ?? 0}%`} />
-        {divided && <>
-          <Metric label="Запоминание" value={`${result.recalled ?? 0} / ${result.statement_count ?? 0}`} />
-          <Metric label="Баланс задач" value={`${result.balance ?? 0}%`} />
-        </>}
-      </div>
-      <div className="mt-7">
-        <h2 className="text-sm font-semibold text-white">Темп по интервалам 30 секунд</h2>
-        <div className="mt-3 flex h-28 items-end gap-1.5" aria-label="Темп по интервалам">
-          {result.interval_pace?.map((value, index) => (
-            <div key={index} className="flex flex-1 flex-col items-center gap-1 text-xs text-slate-500">
-              <span>{value}</span>
-              <div className="w-full rounded-t bg-cyan-300/70" style={{ height: `${Math.max(3, value / Math.max(...result.interval_pace, 1) * 70)}px` }} />
-              <span>{index + 1}</span>
+    const res = attempt.result as any;
+    const grades: any = { high: "Высокий", medium: "Средний", low: "Низкий" };
+    return (
+      <ResultPanel attempt={attempt} title="Тест завершен" scoreLabel="Балл (0-100)" onRepeat={() => setAttempt(null)}>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+          <div className="rounded-xl bg-white/[0.035] p-4 text-center">
+            <span className="text-xs text-slate-500">Уровень</span>
+            <strong className="mt-1 block text-xl text-cyan-200">{grades[res.grade]}</strong>
+          </div>
+          <div className="rounded-xl bg-white/[0.035] p-4 text-center">
+            <span className="text-xs text-slate-500">Цена переключения</span>
+            <strong className="mt-1 block text-xl text-white">{(res.switch_cost_ms / 1000).toFixed(2)} с</strong>
+          </div>
+          <div className="rounded-xl bg-white/[0.035] p-4 text-center">
+            <span className="text-xs text-slate-500">Ошибок всего</span>
+            <strong className={cn("mt-1 block text-xl", res.total_errors > 0 ? "text-rose-300" : "text-emerald-300")}>{res.total_errors}</strong>
+          </div>
+          <div className="rounded-xl bg-white/[0.035] p-4 text-center">
+            <span className="text-xs text-slate-500">Общее время</span>
+            <strong className="mt-1 block text-xl text-white">{(attempt.duration_ms! / 1000).toFixed(1)} с</strong>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/10 bg-slate-900/50 overflow-hidden">
+          <div className="grid grid-cols-4 bg-white/5 p-3 text-xs tracking-widest text-slate-400 uppercase text-center font-medium">
+            <span>Этап</span><span>Время</span><span>Ср. Реакция</span><span>Ошибки</span>
+          </div>
+          {[
+            { label: "1 (Арабские)", t: res.t1_ms, r: res.avg_reactions["1"], e: res.errors["1"] },
+            { label: "2 (Римские)", t: res.t2_ms, r: res.avg_reactions["2"], e: res.errors["2"] },
+            { label: "3 (Попеременно)", t: res.t3_ms, r: res.avg_reactions["3"], e: res.errors["3"] }
+          ].map((row, i) => (
+            <div key={i} className="grid grid-cols-4 p-3 text-sm text-center border-t border-white/5 items-center">
+              <span className="text-slate-300 text-left pl-4">{row.label}</span>
+              <span className="font-mono text-cyan-100">{(row.t / 1000).toFixed(1)}с</span>
+              <span className="font-mono text-slate-300">{row.r}мс</span>
+              <span className={row.e > 0 ? "text-rose-300" : "text-emerald-300"}>{row.e}</span>
             </div>
           ))}
         </div>
-      </div>
-      {divided && <div className="mt-7 text-sm text-slate-400">
-        <p>Точность таблицы: {result.table_score ?? 0}% · Запоминание: {result.memory_score ?? 0}%</p>
-        {!!result.matches?.length && <p className="mt-3 text-emerald-300">Вспомнено: {result.matches.map((item) => item.statement).join("; ")}</p>}
-        {!!result.missed_statements?.length && <p className="mt-3">Пропущено: {result.missed_statements.join("; ")}</p>}
-      </div>}
-    </ResultPanel>;
+      </ResultPanel>
+    );
   }
 
   return <section>
@@ -254,8 +263,8 @@ export function CorrectionPage({ moduleCode }: { moduleCode: ModuleCode }) {
             <Button size="sm" variant={!markMode ? "primary" : "secondary"} onClick={() => setMarkMode(false)}>Просмотрено до</Button>
           </div>
         </div>
-        <div className="overflow-x-auto pb-2">
-          <div role="grid" aria-label="Корректурная таблица" className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${task?.grid_columns ?? 20}, minmax(27px, 1fr))`, minWidth: `${(task?.grid_columns ?? 20) * 29}px` }}>
+        <div className="overflow-x-auto pb-2 w-full">
+          <div role="grid" aria-label="Корректурная таблица" className="grid gap-0.5 sm:gap-1 w-full" style={{ gridTemplateColumns: `repeat(${task?.grid_columns ?? 20}, minmax(0, 1fr))` }}>
             {task?.cells.map((symbol, position) => {
               const selected = task.selected_positions.includes(position);
               const wrong = task.wrong_positions.includes(position);
@@ -264,10 +273,10 @@ export function CorrectionPage({ moduleCode }: { moduleCode: ModuleCode }) {
               return <button key={position} type="button" role="gridcell" aria-label={`Знак ${position + 1}: ${symbol}`}
                 disabled={pending || passed || remaining <= 0}
                 onClick={() => act(position)}
-                className={cn("grid aspect-square place-items-center rounded text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-cyan-200",
+                className={cn("grid aspect-square place-items-center rounded text-[clamp(8px,1.5vw,16px)] font-bold transition focus-visible:outline-2 focus-visible:outline-cyan-200",
                   selected ? "bg-cyan-300/25 text-cyan-100" : wrong ? "bg-rose-300/25 text-rose-200" : passed ? "bg-slate-800/30 text-slate-500" : "bg-slate-800/75 text-white hover:bg-cyan-300/15",
                   position === task.cursor && "ring-2 ring-amber-300/70",
-                  line && "border-r-4 border-r-amber-300")}>{symbol}</button>;
+                  line && "border-r-2 sm:border-r-4 border-r-amber-300")}>{symbol}</button>;
             })}
           </div>
         </div>
